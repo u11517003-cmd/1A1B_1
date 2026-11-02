@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>幾 A 幾 B｜版本一</title>
+  <style>
+    :root {font-family:system-ui,"Microsoft JhengHei",sans-serif;color:#23443d;background:#f4f2e9;line-height:1.7}
+    * {box-sizing:border-box}
+    body {margin:0;min-height:100vh;display:grid;place-items:center;padding:28px 16px}
+    main {width:min(100%,580px)}
+    .eyebrow {margin:0 0 8px;font-size:13px;letter-spacing:.12em;color:#576b5f}
+    h1 {font-size:clamp(32px,7vw,46px);line-height:1.25;margin:0 0 14px}
+    .intro {margin:0 0 24px;color:#50645b}
+    .card {padding:clamp(24px,5vw,38px);background:#fff;border:1px solid #d1dcd1;border-radius:26px;box-shadow:0 16px 50px #274b3e0a}
+    .range {display:flex;align-items:center;justify-content:center;gap:12px;padding:10px 0 20px;font-size:24px;font-weight:750;flex-wrap:wrap}
+    .range span {color:#839487;font-size:16px;font-weight:400}
+    label {display:block;font-weight:650;margin-bottom:10px}
+    input {width:100%;font:700 36px/1.4 system-ui;text-align:center;letter-spacing:.18em;padding:14px;border:2px solid #a3b9ac;border-radius:14px;color:#23443d;background:#fbfcf8}
+    input::placeholder {color:#9ba69e;font-weight:400;letter-spacing:normal}
+    button {font:inherit;font-weight:650;border-radius:12px;padding:13px 18px;cursor:pointer;min-height:50px}
+    .submit {width:100%;margin-top:14px;border:1px solid #315e4f;background:#315e4f;color:white}
+    .reset {border:1px solid #a6b9ab;color:#315e4f;background:transparent}
+    button:disabled {opacity:.5;cursor:default}
+    :focus-visible {outline:3px solid #a86731;outline-offset:4px}
+    #feedback {display:flex;align-items:center;justify-content:center;text-align:center;min-height:94px;border-radius:14px;background:#edf2eb;padding:18px;margin:24px 0;color:#355a4b;font-size:20px;font-weight:650}
+    #feedback[data-tone=error] {background:#f8e9e1;color:#853b29}
+    #feedback[data-tone=win] {background:#dcebd7;color:#28512a}
+    .footer {display:flex;gap:18px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+    .note {font-size:13px;color:#5b6b61;margin:22px 4px 0}
+    .small {font-size:14px;color:#5b6b61}
+    .debug {display:flex;align-items:center;gap:10px;margin-top:18px;padding:12px 14px;border:1px solid #d1dcd1;border-radius:12px;background:#f8faf6}
+    .debug input {width:20px;height:20px;margin:0;accent-color:#315e4f}
+    .debug label {margin:0;cursor:pointer}
+    #answer-display {margin:10px 0 0;text-align:center;font-size:18px;font-weight:750;letter-spacing:.18em;color:#315e4f;min-height:30px}
+    @media(prefers-reduced-motion:no-preference) {button{transition:background .15s}.submit:hover:not(:disabled){background:#244d40}}
+  </style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">數位科技概論 · 版本一</p>
+  <h1>幾 A 幾 B？</h1>
+  <p class="intro">電腦已選好四位不重複的數字（0～9）。<br>猜測數字與位置，看看能得到幾 A 幾 B！</p>
+  <section class="card" aria-label="幾 A 幾 B 遊戲">
+    <div class="range" aria-hidden="true">四位數 <span>·</span> 數字不重複 <span>·</span> 可由 0 開頭</div>
+    <form id="guess-form" novalidate>
+      <label for="guess">輸入四位數猜測</label>
+      <input id="guess" type="text" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="例如 0123" aria-describedby="feedback">
+      <button class="submit" id="submit" type="submit">送出猜測</button>
+    </form>
+    <p id="feedback" role="status" aria-live="polite" aria-atomic="true">準備好了！輸入四個不重複的數字吧。</p>
+    <div class="debug">
+      <input id="debug-toggle" type="checkbox">
+      <label for="debug-toggle">除錯模式（顯示本局答案）</label>
+    </div>
+    <p id="answer-display" aria-live="polite"></p>
+    <div class="footer"><button class="reset" id="restart" type="button">重新開始</button><span class="small">也可以按 Enter 送出</span></div>
+  </section>
+  <p class="note">答案只在本局暫時保留。重新開始或重新整理會抽出新答案；本版沒有猜測歷史、帳號或存檔。</p>
+</main>
+<script>
+'use strict';
+const form = document.getElementById('guess-form');
+const input = document.getElementById('guess');
+const submit = document.getElementById('submit');
+const feedback = document.getElementById('feedback');
+const restart = document.getElementById('restart');
+const debugToggle = document.getElementById('debug-toggle');
+const answerDisplay = document.getElementById('answer-display');
+
+let answer;
+let finished = false;
+
+function randomAnswer(random = Math.random) {
+  const digits = '0123456789'.split('');
+  for (let i = digits.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [digits[i], digits[j]] = [digits[j], digits[i]];
+  }
+  return digits.slice(0, 4).join('');
+}
+
+function parseGuess(raw) {
+  const value = String(raw);
+  if (!/^\d{4}$/.test(value)) return null;
+  if (new Set(value).size !== 4) return null;
+  return value;
+}
+
+function getResult(guess, target) {
+  let a = 0;
+  let b = 0;
+  for (let i = 0; i < 4; i++) {
+    if (guess[i] === target[i]) a++;
+    else if (target.includes(guess[i])) b++;
+  }
+  return { a, b };
+}
+
+function showMessage(message, tone = '') {
+  feedback.textContent = message;
+  feedback.dataset.tone = tone;
+}
+
+function updateAnswerDisplay() {
+  answerDisplay.textContent = debugToggle.checked ? '本局答案：' + answer : '';
+}
+
+function newGame(focusInput = true) {
+  answer = randomAnswer();
+  finished = false;
+  input.value = '';
+  input.disabled = false;
+  submit.disabled = false;
+  input.removeAttribute('aria-invalid');
+  debugToggle.checked = false;
+  updateAnswerDisplay();
+  showMessage('準備好了！輸入四個不重複的數字吧。');
+  if (focusInput) input.focus();
+}
+
+form.addEventListener('submit', event => {
+  event.preventDefault();
+  if (finished) return;
+
+  const guess = parseGuess(input.value);
+  if (guess === null) {
+    showMessage('請輸入四位數字，且每個數字都不能重複（可輸入 0 開頭）。', 'error');
+    input.setAttribute('aria-invalid', 'true');
+    input.focus();
+    return;
+  }
+
+  input.removeAttribute('aria-invalid');
+  const { a, b } = getResult(guess, answer);
+  if (a === 4) {
+    finished = true;
+    showMessage('4A0B！恭喜猜對，答案就是 ' + answer + '。', 'win');
+    input.disabled = true;
+    submit.disabled = true;
+    restart.focus();
+  } else {
+    showMessage(a + 'A' + b + 'B');
+    input.focus();
+    input.select();
+  }
+});
+
+debugToggle.addEventListener('change', updateAnswerDisplay);
+restart.addEventListener('click', () => newGame());
+newGame(false);
+</script>
+</body>
+</html>
